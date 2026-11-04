@@ -86,7 +86,7 @@ class WindowTests(unittest.TestCase):
         from types import SimpleNamespace
         a = self.app
         a.change_grouping()
-        self.assertEqual(a.sc_tree.get_children(), ('DEMO:room:sc:demo-0', 'DEMO:room:sc:demo-2',
+        self.assertEqual(a.sc_tree.get_children(), ('DEMO:room:sc:demo-2', 'DEMO:room:sc:demo-0',
                                                     '__processed_separator__', 'DEMO:room:sc:demo-1'))
         a.sc_tree.identify_region = lambda x, y: 'cell'
         a.sc_tree.identify_row = lambda y: '__processed_separator__'
@@ -95,10 +95,10 @@ class WindowTests(unittest.TestCase):
         # Newly confirmed items remain above the divider until the next button click.
         a.ledger.mark('DEMO:room:sc:demo-0', 'circle')
         a.render()
-        self.assertEqual(a.sc_tree.get_children()[0], 'DEMO:room:sc:demo-0')
+        self.assertEqual(a.sc_tree.get_children()[1], 'DEMO:room:sc:demo-0')
         a.change_grouping()
         self.assertEqual(a.sc_tree.get_children(), ('DEMO:room:sc:demo-2', '__processed_separator__',
-                                                    'DEMO:room:sc:demo-0', 'DEMO:room:sc:demo-1'))
+                                                    'DEMO:room:sc:demo-1', 'DEMO:room:sc:demo-0'))
 
     def test_three_kotobalive_themes_keep_data_and_preferences(self):
         a = self.app

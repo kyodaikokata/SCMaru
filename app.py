@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+from collections import OrderedDict
 import locale
 import logging
 import os
 from pathlib import Path
 import queue
-import subprocess
 import sys
 from threading import Thread
 import time
@@ -31,7 +31,7 @@ from notifications import ReminderBadge, SoundPlayer
 from translation import TranslationWorker, fingerprint
 from scroll_page import ScrollPage
 from appearance import apply_widgets,resolve_family
-from user_search import matches_user
+from user_search import matches_user, variants
 from txt_archive import import_file
 import updater
 
@@ -105,6 +105,7 @@ class App:
         self.sound_volume = tk.DoubleVar(value=sound.get('volume',35))
         trans = self.ledger.get('translation', {})
         self.translation_enabled = tk.BooleanVar(value=trans.get('enabled',False))
+        self.auto_translate_new = tk.BooleanVar(value=trans.get('auto_new', False))
         self.hide_original = tk.BooleanVar(value=trans.get('hide_original',False))
         self.list_translation_enabled = tk.BooleanVar(value=trans.get('list_enabled',False))
         self.zh_to_ja = tk.BooleanVar(value=trans.get('zh_to_ja',True))
@@ -118,6 +119,7 @@ class App:
         self.translation_token = 0
         self.translation_cache = {}
         self.translation_current = None
+        self.translation_pending = OrderedDict()
         self.translation_timer = None
         saved_reminders = self.ledger.get('reminders', {})
         self.reminder_vars = {}
@@ -151,6 +153,9 @@ class App:
         self.filter = tk.StringVar(value=self.ledger.get('filter', 'all'))
         self.user_search = tk.StringVar(value=self.ledger.get('user_search',''))
         self.rank_scope = tk.StringVar(value=self.ledger.get('rank_scope', 'session'))
+        self.rank_sort = 'amount'
+        self.sc_sort = 'time'
+        self.sc_sort_reverse = True
         if self.filter.get() not in ('all', 'pending', 'circle', 'triangle', 'square'): self.filter.set('all')
         if self.rank_scope.get() not in ('day', 'session'): self.rank_scope.set('session')
         self.status = 'disconnected'
@@ -168,7 +173,7 @@ class App:
         self.render_dirty = True
         self.closing = False
         self.update_busy = False
-        self.update_executable = None
+        self.update_stage = None
         self.txt_seen = {}
         self.demo = demo
         self.main_frame = None
@@ -202,7 +207,9 @@ class App:
         self.style()
         self.build()
         # Restore the last local capture without initiating any connection.
-        row = self.ledger.db.execute('SELECT * FROM sessions ORDER BY started DESC LIMIT 1').fetchone()
+        row = self.ledger.db.execute(
+            "SELECT * FROM sessions WHERE NOT (room='TEST' AND source LIKE 'txt-%') ORDER BY started DESC LIMIT 1"
+        ).fetchone()
         if row:
             self.ledger.session = row['id']
             self.active_room, self.active_source = row['room'], row['source']
@@ -219,7 +226,7 @@ class App:
         for variable in (self.sound_enabled,self.sc_sound,self.alarm_sound,self.sound_volume): variable.trace_add('write',self.schedule_save)
         for variable in (self.ui_family,self.ui_scale): variable.trace_add('write',self.change_appearance)
         self.list_translation_enabled.trace_add('write', self.change_list_translation)
-        for variable in (self.translation_enabled,self.zh_to_ja,self.ja_to_zh,self.translation_mode,self.translation_url,self.translation_model,self.translation_key):
+        for variable in (self.translation_enabled,self.auto_translate_new,self.zh_to_ja,self.ja_to_zh,self.translation_mode,self.translation_url,self.translation_model,self.translation_key):
             variable.trace_add('write',self.change_translation)
         self.hide_original.trace_add('write',self.change_hide_original)
         for pair in self.reminder_vars.values():
@@ -234,12 +241,47 @@ class App:
 
     def startup(self):
         if self.closing: return
+        if not self.demo and self.ledger.get('test_archive_checked_version') != VERSION:
+            try:
+                self.install_test_archive()
+                self.ledger.set('test_archive_checked_version', VERSION)
+            except (OSError, ValueError) as error:
+                self.notice.set(self.t('error') + ': ' + type(error).__name__)
         if not self.ledger.get('welcome_seen', False): self.open_start_page()
         if self.login_expired: self.prompt_expired_login()
         elif self.session_cookie.get():
             from login import check_saved_session
             self.login_generation += 1
             check_saved_session(self.queue, self.session_cookie.get(), self.login_generation)
+
+    def install_test_archive(self):
+        folder = self.ledger.export_directory
+        for path in folder.glob('*.txt'):
+            if 'test' not in path.stem.casefold():
+                continue
+            try:
+                if import_file(self.ledger, path):
+                    return
+            except (OSError, ValueError, OverflowError):
+                continue
+
+        sample = self.asset_root / 'TEST_15_SC.txt'
+        content = sample.read_bytes()
+        folder.mkdir(parents=True, exist_ok=True)
+        index = 1
+        while True:
+            target = folder / (sample.name if index == 1 else f'{sample.stem}_{index}.txt')
+            try:
+                output = target.open('xb')
+                break
+            except FileExistsError:
+                index += 1
+        try:
+            with output:
+                output.write(content)
+        except OSError:
+            target.unlink(missing_ok=True)
+            raise
 
     def prompt_expired_login(self):
         if self.start_page and self.start_page.window.winfo_exists(): self.start_page.show_expired()
@@ -298,7 +340,7 @@ class App:
         self.root.title('SCMaru ' + VERSION + ' · ' + self.t('title') + (' [DEMO]' if self.demo else ''))
         outer = ttk.Frame(self.root, padding=(14,8,14,10))
         self.main_frame = outer
-        self.sc_signature = None
+        self.rank_signature = None
         outer.pack(fill='both', expand=True)
         outer.columnconfigure(0, weight=1)
         outer.rowconfigure(3, weight=1)
@@ -376,6 +418,8 @@ class App:
         self.help(ttk.Checkbutton(list_head, text=self.t('video'), variable=self.video), 'video_help').pack(side='left', padx=5)
         ttk.Checkbutton(list_head,text=self.t('list_translate'),variable=self.list_translation_enabled).pack(side='left',padx=6)
         ttk.Button(list_actions, text=self.t('sort_processed'), command=self.change_grouping,style='Compact.TButton').pack(side='left', padx=0)
+        self.sc_sort_label = ttk.Label(list_actions, style='Muted.TLabel')
+        self.sc_sort_label.pack(side='left', padx=6)
         self.confirm_blue_btn = self.help(ttk.Button(list_actions, image=self.blue_confirm_icon, command=self.confirm_blue,style='Compact.TButton'), 'confirm_blue_help')
         if self.video.get(): self.confirm_blue_btn.pack(side='left', padx=6)
         filter_box = ttk.Combobox(list_head, state='readonly', values=[self.t(k) for k in ('all', 'pending', 'circle', 'triangle', 'square')], width=10)
@@ -398,6 +442,8 @@ class App:
         self.root.after_idle(place_detail)
         self.detail_split.bind('<ButtonRelease-1>',self.schedule_save,add='+')
         self.sc_tree = self.tree(table_host, ('time', 'user', 'amount', 'content'), (130, 100, 75, 220), status=True)
+        for column in ('time', 'user', 'amount'):
+            self.sc_tree.heading(column, text=self.t(column), command=lambda key=column: self.change_sc_sort(key))
         self.sc_tree.bind('<<TreeviewSelect>>', self.select_sc)
         for binding, mark in [('<Button-1>', 'circle'), ('<Double-Button-1>', 'circle'),
                               ('<Button-2>', 'square'), ('<Double-Button-2>', 'square'),
@@ -409,6 +455,8 @@ class App:
         trans_head=ttk.Frame(detail_host)
         trans_head.grid(row=1,column=0,sticky='ew')
         self.help(ttk.Checkbutton(trans_head,text=self.t('translate_sc'),variable=self.translation_enabled),'translation_help').pack(side='left')
+        self.help(ttk.Checkbutton(trans_head, text=self.t('auto_translate_new'), variable=self.auto_translate_new),
+                  'auto_translate_new_help').pack(side='left', padx=5)
         ttk.Checkbutton(trans_head,text=self.t('zh_to_ja'),variable=self.zh_to_ja).pack(side='left',padx=8)
         ttk.Checkbutton(trans_head,text=self.t('ja_to_zh'),variable=self.ja_to_zh).pack(side='left',padx=8)
         self.hide_original_btn=ttk.Checkbutton(trans_head,text=self.t('hide_original'),variable=self.hide_original)
@@ -422,17 +470,26 @@ class App:
         self.detail.tag_configure('translation_meta',foreground=self.palette['muted'],font=('Segoe UI',9))
         rh = ttk.Frame(right)
         rh.grid(row=0, column=0, sticky='ew', pady=(0, 8))
-        ttk.Label(rh, text=self.t('right'), font=('Segoe UI', 12, 'bold')).pack(side='left', padx=8)
-        scope = ttk.Combobox(rh, values=[self.t('day'), self.t('session')], state='readonly', width=8)
+        rank_head = ttk.Frame(rh)
+        rank_head.pack(fill='x')
+        ttk.Label(rank_head, text=self.t('right'), font=('Segoe UI', 12, 'bold')).pack(side='left', padx=8)
+        scope = ttk.Combobox(rank_head, values=[self.t('day'), self.t('session')], state='readonly', width=8)
         scope.current(self.rank_scope.get() == 'session')
         scope.pack(side='right')
         scope.bind('<<ComboboxSelected>>', lambda e: self.set_scope(('day', 'session')[scope.current()]))
+        rank_actions = ttk.Frame(rh)
+        rank_actions.pack(fill='x', pady=(4, 0))
+        self.rank_sort_label = ttk.Label(rank_actions, style='Muted.TLabel')
+        self.rank_sort_label.pack(side='left', padx=8)
+        ttk.Button(rank_actions, text=self.t('switch_sort'), style='Compact.TButton',
+                   command=self.change_rank_sort).pack(side='right')
         self.rank_tree = self.tree(right, ('user', 'amount'), (160, 60))
         self.rank_tree.bind('<<TreeviewSelect>>', self.select_rank)
         self.rank_detail = tk.Text(right, height=self.layout.get('rank_detail_height', 5), wrap='word', bg=self.palette['input'], fg=self.palette['fg'], relief='flat',
                                    font=('Segoe UI', 10), padx=10, pady=8, state='disabled')
         self.rank_detail.grid(row=2, column=0, sticky='ew', padx=(8, 0), pady=(8, 0))
         ttk.Label(outer, textvariable=self.notice, style='Muted.TLabel', wraplength=1100).grid(row=4, column=0, sticky='w', pady=(8, 0))
+        self.apply_appearance()
         self.render_dirty = True
 
     def tree(self, parent, columns, widths, status=False):
@@ -715,7 +772,7 @@ class App:
             login_expired=self.login_expired,
             appearance=dict(font=self.ui_family.get(),scale=self.ui_scale.get()),
             sound=dict(enabled=self.sound_enabled.get(),sc=self.sc_sound.get(),alarm=self.alarm_sound.get(),volume=self.sound_volume.get()),
-            translation=dict(enabled=self.translation_enabled.get(),hide_original=self.hide_original.get(),list_enabled=self.list_translation_enabled.get(),zh_to_ja=self.zh_to_ja.get(),ja_to_zh=self.ja_to_zh.get(),mode=self.translation_mode.get(),url=self.translation_url.get(),model=self.translation_model.get(),key_protected=encrypted('translation_key',self.translation_key.get())),
+            translation=dict(enabled=self.translation_enabled.get(),auto_new=self.auto_translate_new.get(),hide_original=self.hide_original.get(),list_enabled=self.list_translation_enabled.get(),zh_to_ja=self.zh_to_ja.get(),ja_to_zh=self.ja_to_zh.get(),mode=self.translation_mode.get(),url=self.translation_url.get(),model=self.translation_model.get(),key_protected=encrypted('translation_key',self.translation_key.get())),
             overlay_effects={key: variable.get() for key, variable in self.overlay_effects.items()},
             layout=self.layout,
             reminders={key: dict(enabled=pair[0].get(), minutes=minutes(pair[1].get(), 10 if key == 'water' else 60)) for key, pair in self.reminder_vars.items()}))
@@ -753,7 +810,6 @@ class App:
             pixels=60+self.layout_vars['sc_detail_height'].get()*(self.layout_vars['list_font_size'].get()+10)
             self.detail_split.sashpos(0,max(80,self.detail_split.winfo_height()-pixels))
         self.rank_detail.configure(height=self.layout_vars['rank_detail_height'].get())
-        self.sc_signature = None
         self.render_dirty = True
         self.render()
         self.schedule_save()
@@ -822,7 +878,6 @@ class App:
         def update():
             self.appearance_timer=None
             self.style()
-            self.sc_signature=None
             self.render()
             self.apply_appearance()
             self.summary.configure(height=round(46*self.ui_scale.get()))
@@ -979,12 +1034,13 @@ class App:
         if self.translation_worker: self.translation_worker.stop()
         self.translation_worker=None
         self.translation_current=None
-        self.sc_signature=None
+        self.translation_pending.clear()
         self.render_dirty=True
         if self.translation_timer: self.root.after_cancel(self.translation_timer)
         def resume():
             self.translation_timer=None
             self.select_sc()
+            self.start_next_translation()
         self.translation_timer=self.root.after(500,resume)
         self.sync_hide_original()
         self.select_sc()
@@ -1009,11 +1065,6 @@ class App:
         if selected:
             row=self.ledger.db.execute('SELECT * FROM events WHERE id=?',(selected[0],)).fetchone()
             if row: self.translation_cache.pop((row['id'],row['text'],fingerprint(self.translation_config())),None)
-        self.translation_current=None
-        if self.translation_worker: self.translation_worker.stop()
-        self.translation_worker=None
-        self.translation_token+=1
-        self.sc_signature=None
         self.render_dirty=True
         self.select_sc()
 
@@ -1043,17 +1094,38 @@ class App:
             elif isinstance(translated,str) and translated.strip() and translated.strip()!=text.strip() and not result.get('skipped'):
                 self.append_translation(result,hide_original=self.hide_original.get())
             return
-        if not allow_request:
-            if key==self.translation_current and self.translation_worker:
-                self.append_translation(dict(error='translation_loading'))
+        if allow_request:
+            self.queue_translation(key, priority=True)
+        if key == self.translation_current or key in self.translation_pending:
+            self.append_translation(dict(error='translation_loading'))
+
+    def queue_translation(self, key, *, priority=False):
+        if key == self.translation_current or key in self.translation_cache or self.closing:
             return
-        if key!=self.translation_current or self.translation_worker is None:
-            if self.translation_worker: self.translation_worker.stop()
-            self.translation_token+=1
-            self.translation_current=key
-            self.translation_worker=TranslationWorker(self.queue)
-            self.translation_worker.start(self.translation_token,text,config)
-        self.append_translation(dict(error='translation_loading'))
+        self.translation_pending[key] = None
+        if priority:
+            self.translation_pending.move_to_end(key, last=False)
+        self.start_next_translation()
+
+    def start_next_translation(self):
+        if self.translation_worker or self.translation_timer or self.closing:
+            return
+        config = self.translation_config()
+        while self.translation_pending:
+            key, _ = self.translation_pending.popitem(last=False)
+            event_id, text, settings = key
+            if key in self.translation_cache or settings != fingerprint(config):
+                continue
+            if not self.ledger.db.execute(
+                "SELECT 1 FROM events WHERE id=? AND session=? AND deleted=0 AND batch=''",
+                (event_id, self.ledger.session),
+            ).fetchone():
+                continue
+            self.translation_token += 1
+            self.translation_current = key
+            self.translation_worker = TranslationWorker(self.queue)
+            self.translation_worker.start(self.translation_token, text, config)
+            return
 
     def list_translation(self,row):
         if not self.list_translation_enabled.get() or row['deleted']: return ''
@@ -1152,27 +1224,29 @@ class App:
             messagebox.showinfo(self.t('update'), self.t('update_latest'), parent=self.root)
             return
         if messagebox.askyesno(self.t('update'), self.t('update_ask', version=release[0]), parent=self.root):
-            parent = Path(sys.executable).resolve().parent.parent
-            self.run_update_task(lambda: updater.install(release, parent), self.finish_update)
+            install_dir = Path(sys.executable).resolve().parent
+            self.run_update_task(lambda: updater.stage_update(release, install_dir), self.finish_update)
 
-    def finish_update(self, executable):
-        self.update_executable = executable
+    def finish_update(self, staging):
+        self.update_stage = staging
         self.close()
 
-    def scan_txt_archives(self):
+    def scan_txt_archives(self, *, force=False):
         folder = self.ledger.export_directory
-        changed = False
+        files = {}
         for path in sorted(folder.glob('*.txt')):
             try:
                 stat = path.stat()
                 signature = (stat.st_mtime_ns, stat.st_size)
-                if self.txt_seen.get(path) == signature:
-                    continue
-                changed |= import_file(self.ledger, path)
-                self.txt_seen[path] = signature
+                cached = self.txt_seen.get(path)
+                if not force and cached and cached[0] == signature:
+                    files[path] = cached
+                else:
+                    files[path] = signature, import_file(self.ledger, path)
             except (OSError, ValueError, OverflowError):
                 continue
-        return changed
+        self.txt_seen = files
+        return {session_id for _, session_id in files.values() if session_id}
 
     def history(self):
         window = tk.Toplevel(self.root)
@@ -1183,32 +1257,41 @@ class App:
         box.pack(fill='both', expand=True, padx=12, pady=12)
         entries = []
 
-        def refresh():
-            if self.closing or not window.winfo_exists():
+        def refresh(*, force=False):
+            available = self.scan_txt_archives(force=force)
+            updated = []
+            for row in self.ledger.db.execute('SELECT * FROM sessions ORDER BY started DESC'):
+                if row['id'] not in available:
+                    continue
+                label = f"{datetime.fromtimestamp(row['started']):%Y-%m-%d %H:%M:%S}  Room {row['room']}  {row['source']}"
+                updated.append(('session', row['id'], row['id'], label))
+                for a in self.ledger.db.execute('SELECT * FROM archives WHERE session=? AND restored=0 ORDER BY created DESC', (row['id'],)):
+                    label = f"    ↳ {datetime.fromtimestamp(a['created']):%H:%M:%S}  {a['reason']}"
+                    updated.append(('archive', a['id'], row['id'], label))
+            if updated == entries:
                 return
-            if self.scan_txt_archives() or not entries:
-                selected = entries[box.curselection()[0]] if box.curselection() else None
-                entries.clear()
-                box.delete(0, 'end')
-                for row in self.ledger.db.execute('SELECT * FROM sessions ORDER BY started DESC'):
-                    entries.append(('session', row['id'], row['id']))
-                    box.insert('end', f"{datetime.fromtimestamp(row['started']):%Y-%m-%d %H:%M:%S}  Room {row['room']}  {row['source']}")
-                    for a in self.ledger.db.execute('SELECT * FROM archives WHERE session=? AND restored=0 ORDER BY created DESC', (row['id'],)):
-                        entries.append(('archive', a['id'], row['id']))
-                        box.insert('end', f"    ↳ {datetime.fromtimestamp(a['created']):%H:%M:%S}  {a['reason']}")
-                if selected in entries:
-                    index = entries.index(selected)
-                    box.selection_set(index)
-                    box.see(index)
-            self.root.after(2000, refresh)
+            selected = entries[box.curselection()[0]] if box.curselection() else None
+            entries[:] = updated
+            box.delete(0, 'end')
+            box.insert('end', *(entry[3] for entry in entries))
+            if selected in entries:
+                index = entries.index(selected)
+                box.selection_set(index)
+                box.see(index)
 
-        refresh()
+        def poll_history():
+            if not self.closing and window.winfo_exists():
+                refresh()
+                self.root.after(2000, poll_history)
+
+        poll_history()
         ttk.Label(window, text=self.t('txt_history_refresh'), wraplength=780, style='Muted.TLabel').pack(padx=12)
         ttk.Label(window, text=self.t('history_note'), wraplength=780).pack(padx=12, pady=6)
 
         def act():
+            refresh()
             if not box.curselection(): return
-            kind, item_id, sid = entries[box.curselection()[0]]
+            kind, item_id, sid, _ = entries[box.curselection()[0]]
             if self.collector.running and sid != self.ledger.session:
                 messagebox.showinfo(self.t('history'), self.t('history_note'), parent=window)
                 return
@@ -1221,7 +1304,10 @@ class App:
             self.render_dirty = True
             window.destroy()
 
-        ttk.Button(window, text=self.t('view') + ' / ' + self.t('restore'), command=act).pack(pady=10)
+        actions = ttk.Frame(window)
+        actions.pack(pady=10)
+        ttk.Button(actions, text=self.t('refresh_history'), command=lambda: refresh(force=True)).pack(side='left', padx=5)
+        ttk.Button(actions, text=self.t('view') + ' / ' + self.t('restore'), command=act).pack(side='left', padx=5)
 
     def copy_overlay(self):
         if not self.overlay:
@@ -1232,17 +1318,29 @@ class App:
         self.root.clipboard_append(url)
         self.notice.set(self.t('copied') + url)
 
-    def update_overlay(self):
+    def update_overlay(self, *, pending=None, total=None):
         if not self.overlay: return
-        total = sum(r['total'] for r in self.ledger.rankings(self.active_room, self.active_source, daily=False))
+        if total is None:
+            total = sum(r['total'] for r in self.ledger.rankings(self.active_room, self.active_source, daily=False))
+        if pending is None:
+            pending = self.ledger.pending()
         text = self.template.get()
-        for key, value in {'pending': self.ledger.pending(), 'total': batteries(total), 'date': datetime.now().strftime('%Y-%m-%d')}.items():
+        for key, value in {'pending': pending, 'total': batteries(total), 'date': datetime.now().strftime('%Y-%m-%d')}.items():
             text = text.replace('{' + key + '}', str(value))
         try: size = max(10, min(240, round(float(self.overlay_size.get()))))
         except ValueError: size = 36
         self.overlay.update(text, self.status == 'connected', self.t('disconnected'), size=size,
                             color=self.overlay_color, font=self.overlay_font.get(),
                             **{key: variable.get() for key, variable in self.overlay_effects.items()})
+
+    def change_sc_sort(self, column):
+        self.sc_sort_reverse = not self.sc_sort_reverse if column == self.sc_sort else column != 'user'
+        self.sc_sort = column
+        self.render()
+
+    def change_rank_sort(self):
+        self.rank_sort = 'time' if self.rank_sort == 'amount' else 'amount'
+        self.render()
 
     def render(self):
         running = self.collector.running
@@ -1258,62 +1356,82 @@ class App:
         status_text = self.t(self.status)
         if self.status == 'connected': status_text += ' · ' + (self.active_anchor or self.t('anchor_unavailable'))
         self.status_label.configure(text=status_text + ' · ' + mode_text + self.status_extra)
-        self.count_label.configure(text=self.t('count', n=self.ledger.pending()))
+        rows = self.ledger.sc_rows()
+        pending = sum(r['mark'] != 'circle' and not r['deleted'] for r in rows)
+        self.count_label.configure(text=self.t('count', n=pending))
         daily = self.rank_scope.get() == 'day'
-        total = sum(r['total'] for r in self.ledger.rankings(self.active_room, self.active_source, daily=daily))
+        rankings = self.ledger.rankings(self.active_room, self.active_source, daily=daily)
+        if self.rank_sort == 'time':
+            rankings.sort(key=lambda row: (row['latest_gift'] is None, -(row['latest_gift'] or 0)))
+        self.rank_sort_label.configure(text=self.t('rank_sort_' + self.rank_sort))
+        direction = 'desc' if self.sc_sort_reverse else 'asc'
+        self.sc_sort_label.configure(text=self.t('sc_sort_' + self.sc_sort + '_' + direction))
+        total = sum(r['total'] for r in rankings)
         current = self.ledger.current()
         date = datetime.now().strftime('%Y-%m-%d') if daily or not current else datetime.fromtimestamp(current['started']).strftime('%Y-%m-%d %H:%M')
         gross_key = 'gross' if daily else ('session_gross' if current and current['start_known'] else 'capture_gross')
         self.total_label.configure(text=self.t(gross_key, date=date, amount=batteries(total)))
         selected = set(self.sc_tree.selection())
         scroll = self.sc_tree.yview()
-        rows = self.ledger.sc_rows()
         filt = self.filter.get()
         rows = [r for r in rows if filt == 'all' or (filt == 'pending' and r['mark'] != 'circle' and not r['deleted']) or r['mark'] == filt]
         rows = [r for r in rows if matches_user(r['name'],self.user_search.get())]
-        signature = tuple((r['id'], r['mark'], r['automatic'], r['deleted'], r['text'], r['sunk'],self.list_translation(r)) for r in rows)
-        if signature != self.sc_signature:
-            self.sc_tree.delete(*self.sc_tree.get_children())
-            for r in grouped_sc(rows, True):
-                if r is None:
-                    self.sc_tree.insert('', 'end', iid='__processed_separator__', text=self.t('processed_divider'),
-                                        values=('', '', '', '────────────────────────'), tags=('divider',))
-                    continue
-                label = self.t(r['mark']) if r['mark'] else ''
-                content = self.t('removed') if r['deleted'] else r['text']
-                self.sc_tree.insert('', 'end', iid=r['id'], text=label, image=self.icons.get(r['mark'], ''),
-                                    values=(datetime.fromtimestamp(r['ts']).strftime('%m-%d %H:%M:%S'), r['name'], batteries(r['amount']), content),
-                                    tags=(('removed',) if r['deleted'] else ()) + (('square',) if r['mark'] == 'square' else ()),translation=self.list_translation(r))
-            self.sc_signature = signature
+        entries = []
+        def sort_key(row):
+            primary = variants(row['name'])[1] if self.sc_sort == 'user' else row[self.sc_sort if self.sc_sort != 'time' else 'ts']
+            return primary, row['ts'], row['id']
+
+        for r in grouped_sc(rows, True, key=sort_key, reverse=self.sc_sort_reverse):
+            if r is None:
+                entries.append(('__processed_separator__', self.t('processed_divider'), '',
+                                ('', '', '', '────────────────────────'), ('divider',), ''))
+                continue
+            label = self.t(r['mark']) if r['mark'] else ''
+            content = self.t('removed') if r['deleted'] else r['text']
+            values = (datetime.fromtimestamp(r['ts']).strftime('%m-%d %H:%M:%S'), r['name'], batteries(r['amount']), content)
+            tags = (('removed',) if r['deleted'] else ()) + (('square',) if r['mark'] == 'square' else ())
+            entries.append((r['id'], label, self.icons.get(r['mark'], ''), values, tags, self.list_translation(r)))
+        new_frames = self.sc_tree.sync(entries)
+        if new_frames:
+            family = resolve_family(self.root, self.ui_family.get())
+            scale = self.ui_scale.get()
+            for frame in new_frames:
+                apply_widgets(frame, family, scale)
         valid = selected.intersection(r['id'] for r in rows)
         if valid:
             self.sc_tree.selection_set(*valid, notify=False)
             self.select_sc(allow_request=False)
         else: self.fill_text(self.detail, '')
         if scroll: self.sc_tree.yview_moveto(scroll[0])
-        rank_selected = self.rank_tree.selection()
-        rank_scroll = self.rank_tree.yview()
-        self.rank_tree.delete(*self.rank_tree.get_children())
-        for index, r in enumerate(self.ledger.rankings(self.active_room, self.active_source, self.rank_scope.get() == 'day'), 1):
-            self.rank_tree.insert('', 'end', iid=r['user'], values=(f"{index}. {r['name']}", batteries(r['total'])))
-        if rank_selected and self.rank_tree.exists(rank_selected[0]):
-            self.rank_tree.selection_set(rank_selected)
-            self.select_rank()
-        else: self.fill_text(self.rank_detail, '')
-        if rank_scroll: self.rank_tree.yview_moveto(rank_scroll[0])
-        self.update_overlay()
-        self.apply_appearance()
+        rank_signature = (self.active_room, self.active_source, self.ledger.session, daily, date,
+                          tuple(tuple(r) for r in rankings))
+        if self.rank_signature != rank_signature:
+            rank_selected = self.rank_tree.selection()
+            rank_scroll = self.rank_tree.yview()
+            self.rank_tree.delete(*self.rank_tree.get_children())
+            for index, r in enumerate(rankings, 1):
+                self.rank_tree.insert('', 'end', iid=r['user'], values=(f"{index}. {r['name']}", batteries(r['total'])))
+            if rank_selected and self.rank_tree.exists(rank_selected[0]):
+                self.rank_tree.selection_set(rank_selected)
+                self.select_rank()
+            else: self.fill_text(self.rank_detail, '')
+            if rank_scroll: self.rank_tree.yview_moveto(rank_scroll[0])
+            self.rank_signature = rank_signature
+        self.update_overlay(pending=pending, total=None if daily else total)
         self.render_dirty = False
 
     def handle(self, kind, data):
         if self.closing and kind in ('translation','login_checked'): return
         if kind=='translation':
-            if data['token']!=self.translation_token or not self.translation_enabled.get(): return
+            if data['token']!=self.translation_token: return
             if self.translation_current:
                 self.translation_cache[self.translation_current]=data['result']
                 if len(self.translation_cache)>128: self.translation_cache.pop(next(iter(self.translation_cache)))
                 self.render_dirty=True
-            self.select_sc()
+            self.translation_current = None
+            self.translation_worker = None
+            self.start_next_translation()
+            self.select_sc(allow_request=False)
             return
         if kind == 'login_checked':
             if data['generation'] != self.login_generation: return
@@ -1343,7 +1461,11 @@ class App:
             # only a verified live/start signal establishes the next broadcast.
             added=self.ledger.ingest(data, self.video.get())
             self.export_dirty |= added
-            if added and data['kind']=='sc' and not self.demo: self.play_sound('sc')
+            if added and data['kind']=='sc' and not self.demo:
+                self.play_sound('sc')
+                if self.auto_translate_new.get():
+                    key = (data['id'], data['text'], fingerprint(self.translation_config()))
+                    self.queue_translation(key)
         elif kind == 'delete':
             self.ledger.delete_sc(**data)
             self.export_dirty = True
@@ -1468,14 +1590,12 @@ def main():
     root = tk.Tk()
     app = App(root, directory, args.demo)
     root.mainloop()
-    if app.update_executable:
+    if app.update_stage:
         try:
             ctypes.windll.kernel32.SetDllDirectoryW(None)
-            env = dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT='1')
-            subprocess.Popen([str(app.update_executable), '--data-dir', str(directory.resolve())],
-                             cwd=app.update_executable.parent, env=env)
-        except OSError:
-            messagebox.showerror(app.t('update'), app.t('update_ready', path=app.update_executable))
+            updater.launch_update(app.update_stage, directory, app.t('update_reopen'))
+        except OSError as error:
+            messagebox.showerror(app.t('update'), app.t('update_failed', error=type(error).__name__))
 
 
 if __name__ == '__main__':

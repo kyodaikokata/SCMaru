@@ -18,31 +18,32 @@ MAX_BYTES = 8 * 1024 * 1024
 
 
 def import_file(ledger, path):
+    """Return the session represented by this TXT, importing it if needed."""
     with path.open('rb') as stream:
         data = stream.read(MAX_BYTES + 1)
     if len(data) > MAX_BYTES:
-        return False
+        return None
     text = data.decode('utf-8-sig').replace('\r\n', '\n')
     lines = text.split('\n', 4)
     if len(lines) < 5 or lines[0] != 'SCMaru / SC archive' or not lines[3].startswith('Timezone: '):
-        return False
+        return None
     header, start = HEADER.fullmatch(lines[1]), START.fullmatch(lines[2])
     if not header or not start:
-        return False
+        return None
     room, source = header.groups()
     if source.startswith('txt-'):
-        return False
+        return None
     date, origin = start.groups()
     for session in ledger.db.execute('SELECT id FROM sessions WHERE room=? AND source=?', (room, source)):
         if path.name == f"{date}_{room}_{source}_{session['id'][:6]}_SC.txt":
-            return False
+            return session['id']
     body = lines[4].lstrip('\n')
     entries = list(ENTRY.finditer(body))
     if not entries or entries[0].start():
-        return False
+        return None
     session_id = hashlib.sha256(text.encode('utf-8')).hexdigest()
     if ledger.db.execute('SELECT 1 FROM sessions WHERE id=?', (session_id,)).fetchone():
-        return False
+        return session_id
     started = int(datetime.strptime(date, '%Y-%m-%d_%H-%M-%S').timestamp())
     archive_id = session_id + '-archive'
     now = int(time.time())
@@ -62,7 +63,7 @@ def import_file(ledger, path):
         result = ledger.db.execute('INSERT OR IGNORE INTO sessions VALUES (?,?,?,?,?,?)',
                                    (session_id, room, 'txt-' + source, started, int(origin == 'broadcast'), now))
         if not result.rowcount:
-            return False
+            return session_id
         ledger.db.execute('INSERT INTO archives VALUES (?,?,?,?,0)',
                           (archive_id, session_id, now, 'TXT · ' + path.name))
         ledger.db.executemany(
@@ -70,4 +71,4 @@ def import_file(ledger, path):
                                    note,mark,automatic,deleted,batch)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''', events
         )
-    return True
+    return session_id

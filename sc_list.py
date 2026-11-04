@@ -1,6 +1,7 @@
 """A wrapping, variable-height SC table with independently scrolling rows."""
 from collections import OrderedDict
 import tkinter as tk
+from tkinter import ttk
 
 
 def blend(a, b):
@@ -24,15 +25,23 @@ class SCList(tk.Frame):
         self.header.pack(fill='x')
         self.headings = []
         for col in range(5):
-            label = tk.Label(self.header, text='', bg=palette['surface'], fg=palette['fg'],
-                             font=('Microsoft YaHei UI', 10), anchor='center', pady=8)
-            label.grid(row=0, column=col, sticky='ew')
+            cell = tk.Frame(self.header, bg=palette['surface'])
+            cell.grid(row=0, column=col, sticky='nsew')
+            if col in (1, 2, 3):
+                label = ttk.Button(cell, width=1, style='Compact.TButton')
+                grip = tk.Frame(cell, width=6, bg=palette['surface'])
+                grip.pack(side='right', fill='y')
+            else:
+                label = tk.Label(cell, text='', bg=palette['surface'], fg=palette['fg'],
+                                 font=('Microsoft YaHei UI', 10), anchor='center', pady=8)
+                grip = label
+            label.pack(fill='both', expand=True)
             self.headings.append(label)
             if col < 4:
-                label.configure(cursor='sb_h_double_arrow')
-                label.bind('<Button-1>', lambda e, c=col: self._start_drag(e, c))
-                label.bind('<B1-Motion>', self._drag_column)
-                label.bind('<ButtonRelease-1>', self._end_drag)
+                grip.configure(cursor='sb_h_double_arrow')
+                grip.bind('<Button-1>', lambda e, c=col: self._start_drag(e, c))
+                grip.bind('<B1-Motion>', self._drag_column)
+                grip.bind('<ButtonRelease-1>', self._end_drag)
             if col < 4: self.header.columnconfigure(col, minsize=self.widths[col])
         self.header.columnconfigure(4, weight=1)
         self.canvas = tk.Canvas(self, bg=palette['panel'], highlightthickness=0, yscrollincrement=22)
@@ -56,9 +65,9 @@ class SCList(tk.Frame):
 
     config = configure
 
-    def heading(self, key, text):
+    def heading(self, key, text, **kwargs):
         index = {'#0': 0, 'time': 1, 'user': 2, 'amount': 3, 'content': 4}[key]
-        self.headings[index].configure(text=text)
+        self.headings[index].configure(text=text, **kwargs)
 
     def column(self, key, **kwargs):
         index = {'#0': 0, 'time': 1, 'user': 2, 'amount': 3, 'content': 4}[key]
@@ -91,11 +100,37 @@ class SCList(tk.Frame):
         if kwargs: self._tags.setdefault(name, {}).update(kwargs)
         return self._tags.get(name, {})
 
-    def insert(self, parent, index, iid, text='', image='', values=(), tags=(),translation=''):
+    def sync(self, entries):
+        """Keep unchanged rows and return the frames that need appearance applied."""
+        entries = list(entries)
+        wanted = {entry[0] for entry in entries}
+        self.delete(*(iid for iid in self._records if iid not in wanted))
+        created = []
+        normal_count = 0
+        for iid, text, image, values, tags, translation in entries:
+            stripe = normal_count % 2
+            if iid != '__processed_separator__':
+                normal_count += 1
+            key = (text, image, values, tags, translation, stripe, self.row_height, self.font_size)
+            if iid in self._records and self._records[iid].get('key') == key:
+                continue
+            self.delete(iid)
+            self.insert('', 'end', iid, text, image, values, tags, translation, stripe=stripe)
+            self._records[iid]['key'] = key
+            created.append(self._records[iid]['frame'])
+        order = [entry[0] for entry in entries]
+        if list(self._records) != order:
+            for before, after in zip(reversed(order[:-1]), reversed(order[1:])):
+                self._records[before]['frame'].pack(before=self._records[after]['frame'])
+            self._records = OrderedDict((iid, self._records[iid]) for iid in order)
+        return created
+
+    def insert(self, parent, index, iid, text='', image='', values=(), tags=(),translation='', *, stripe=None):
         p = self.palette
         divider = iid == '__processed_separator__'
-        normal_count = sum(not r['divider'] for r in self._records.values())
-        bg = p['surface'] if divider else (p['panel'] if normal_count % 2 == 0 else blend(p['panel'], p['surface']))
+        if stripe is None:
+            stripe = (len(self._records) - ('__processed_separator__' in self._records)) % 2
+        bg = p['surface'] if divider else (p['panel'] if stripe == 0 else blend(p['panel'], p['surface']))
         if 'square' in tags:
             tint = '#162b43' if p['bg'] == '#1c1b20' else '#7892b5'
             bg = '#' + ''.join(f'{round(int(bg[i:i+2],16)*.82+int(tint[i:i+2],16)*.18):02x}' for i in (1,3,5))
@@ -166,8 +201,11 @@ class SCList(tk.Frame):
 
     def selection_set(self, *items, notify=True):
         if len(items) == 1 and not isinstance(items[0], str): items = tuple(items[0])
+        previous = set(self._selected)
         self._selected = [i for i in items if i in self._records and not self._records[i]['divider']]
-        for iid, row in self._records.items(): row['frame'].configure(highlightthickness=1 if iid in self._selected else 0)
+        current = set(self._selected)
+        for iid in previous ^ current:
+            self._records[iid]['frame'].configure(highlightthickness=int(iid in current))
         if notify:
             self.event_generate('<<TreeviewSelect>>')
 

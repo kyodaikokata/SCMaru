@@ -1,8 +1,11 @@
-"""Download and stage a verified Windows release next to the current app."""
+"""Download and stage a verified Windows release for in-place replacement."""
 import hashlib
 import json
+import os
 from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
+import shutil
+import subprocess
 import tempfile
 from urllib.request import Request, urlopen
 import zipfile
@@ -10,6 +13,10 @@ import zipfile
 
 REPOSITORY = 'https://github.com/kyodaikokata/SCMaru'
 LATEST = 'https://api.github.com/repos/kyodaikokata/SCMaru/releases/latest'
+PACKAGE_ENTRIES = {
+    'SCMaru.exe', '_internal', 'VERSION.txt', 'README.md', 'CHANGELOG.md',
+    'IDENTITY_CODE_GUIDE.md', 'LIVEHIME.md', 'FONT_LICENSES.txt', 'THIRD_PARTY_LICENSES.txt',
+}
 
 
 def check(current):
@@ -32,13 +39,11 @@ def check(current):
     raise ValueError('Verified Windows asset missing')
 
 
-def install(release, parent):
+def stage_update(release, install_dir):
     version, url, size, digest = release
-    destination = parent / f'SCMaru-{version}'
-    if destination.exists():
-        raise FileExistsError(destination)
-    with tempfile.TemporaryDirectory(prefix='.scmaru-update-', dir=parent) as directory:
-        staging = Path(directory)
+    install_dir = install_dir.resolve()
+    staging = Path(tempfile.mkdtemp(prefix='.scmaru-update-', dir=install_dir))
+    try:
         archive = staging / 'release.zip'
         checksum = hashlib.sha256()
         total = 0
@@ -55,6 +60,7 @@ def install(release, parent):
             for entry in package.infolist():
                 path = PurePosixPath(entry.filename)
                 if (not path.parts or path.parts[0] != 'SCMaru' or '..' in path.parts
+                        or (len(path.parts) > 1 and path.parts[1] not in PACKAGE_ENTRIES)
                         or any(PureWindowsPath(part).is_reserved() or part.endswith(('.', ' '))
                                or re.search(r'[\\:<>|?*"]', part) for part in path.parts)):
                     raise ValueError('Unexpected ZIP path')
@@ -63,5 +69,29 @@ def install(release, parent):
         if ((app / 'VERSION.txt').read_text(encoding='utf-8').strip() != version
                 or not (app / 'SCMaru.exe').is_file() or not (app / '_internal').is_dir()):
             raise ValueError('Unexpected app layout')
-        app.rename(destination)
-    return destination / 'SCMaru.exe'
+        archive.unlink()
+        shutil.copyfile(Path(__file__).parent / 'assets' / 'apply_update.ps1', staging / 'apply_update.ps1')
+    except Exception:
+        if staging.resolve().parent == install_dir:
+            shutil.rmtree(staging, ignore_errors=True)
+        raise
+    return staging
+
+
+def launch_update(staging, data_dir, failure_message):
+    install_dir = staging.parent
+    data_dir = data_dir.resolve()
+    if any(data_dir.is_relative_to(install_dir / name) for name in PACKAGE_ENTRIES):
+        raise OSError('Data directory overlaps the program files')
+    env = dict(os.environ,
+               SCMARU_UPDATE_STAGE=str(staging),
+               SCMARU_UPDATE_PID=str(os.getpid()),
+               SCMARU_UPDATE_ARGS=subprocess.list2cmdline(['--data-dir', str(data_dir)]),
+               SCMARU_UPDATE_FAILURE=failure_message,
+               PYINSTALLER_RESET_ENVIRONMENT='1')
+    powershell = Path(os.environ['SystemRoot']) / 'System32/WindowsPowerShell/v1.0/powershell.exe'
+    subprocess.Popen(
+        [str(powershell), '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass',
+         '-File', str(staging / 'apply_update.ps1')],
+        cwd=install_dir, env=env, creationflags=subprocess.CREATE_NO_WINDOW,
+    )

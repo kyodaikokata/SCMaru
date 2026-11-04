@@ -1,2 +1,2 @@
 """Single source for application and release versions."""
-VERSION = '0.3.4'
+VERSION = '0.3.5'

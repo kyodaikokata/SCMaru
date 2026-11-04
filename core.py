@@ -29,9 +29,9 @@ def language(value="system", system=None):
     return "ja" if (system or "").lower().startswith("ja") else "zh"
 
 
-def grouped_sc(rows, enabled=False):
-    """Preserve timestamp order within each group; None is a non-event divider."""
-    rows = sorted(rows, key=lambda row: (row['ts'], row['id']))
+def grouped_sc(rows, enabled=False, *, key=None, reverse=False):
+    """Sort within each group; None is a non-event divider."""
+    rows = sorted(rows, key=key or (lambda row: (row['ts'], row['id'])), reverse=reverse)
     if not enabled:
         return rows
     pending = [row for row in rows if not row['sunk'] or row['mark'] != 'circle']
@@ -265,7 +265,8 @@ class Ledger:
         return self.db.execute(f"""SELECT user,MAX(name) AS name,SUM(amount) AS total,COUNT(*) AS count,
           SUM(CASE WHEN kind='sc' THEN amount ELSE 0 END) AS sc,
           SUM(CASE WHEN kind='gift' THEN amount ELSE 0 END) AS gift,
-          SUM(CASE WHEN kind='guard' THEN amount ELSE 0 END) AS guard
+          SUM(CASE WHEN kind='guard' THEN amount ELSE 0 END) AS guard,
+          MAX(CASE WHEN kind='gift' THEN ts END) AS latest_gift
           FROM events WHERE {where} GROUP BY user ORDER BY total DESC,user""", args).fetchall()
 
     @property
