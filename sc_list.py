@@ -21,6 +21,10 @@ class SCList(tk.Frame):
         self.font_size = 10
         self.on_resize = None
         self._drag = None
+        self._layout_job = None
+        self._viewport_width = None
+        self._scroll_job = None
+        self._scroll_targets = {}
         self.header = tk.Frame(self, bg=palette['surface'])
         self.header.pack(fill='x')
         self.headings = []
@@ -83,17 +87,22 @@ class SCList(tk.Frame):
     def _drag_column(self, event):
         if self._drag is None: return
         col, start, width = self._drag
+        preview = max(55, min(1200, width + event.x_root - start))
+        self.header.columnconfigure(col, minsize=preview)
+
+    def _end_drag(self, event):
+        if self._drag is None: return
+        col, start, width = self._drag
+        self._drag_column(event)
+        self._drag = None
         self.widths[col] = max(55, min(1200, width + event.x_root - start))
-        self.header.columnconfigure(col, minsize=self.widths[col])
+        if self.widths[col] == width:
+            return
         for row in self._records.values():
             if row['divider']: continue
             row['frame'].columnconfigure(col, minsize=self.widths[col])
-            row['labels'][col].configure(wraplength=self.widths[col] - 14)
-            self._wrap_row(row)
-        self.canvas.itemconfigure(self.window_id, width=max(self.canvas.winfo_width(), sum(self.widths)+180))
-
-    def _end_drag(self, event):
-        self._drag = None
+            row['labels'][col].configure(wraplength=max(30, self.widths[col] - 14))
+        self._apply_layout()
         if self.on_resize: self.on_resize()
 
     def tag_configure(self, name, **kwargs):
@@ -178,7 +187,18 @@ class SCList(tk.Frame):
             if row.get('translation_label'): row['translation_label'].configure(wraplength=width)
 
     def _resize(self, event):
-        self.canvas.itemconfigure(self.window_id, width=max(event.width, sum(self.widths)+180))
+        if event.width == self._viewport_width:
+            return
+        self._viewport_width = event.width
+        if self._layout_job is not None:
+            self.after_cancel(self._layout_job)
+        self._layout_job = self.after(75, self._apply_layout)
+
+    def _apply_layout(self):
+        if self._layout_job is not None:
+            self.after_cancel(self._layout_job)
+            self._layout_job = None
+        self.canvas.itemconfigure(self.window_id, width=max(self.canvas.winfo_width(), sum(self.widths)+180))
         for row in self._records.values(): self._wrap_row(row)
 
     def _bind_row(self, label, iid, column):
@@ -192,6 +212,7 @@ class SCList(tk.Frame):
         return callback(event) if callback else None
 
     def _wheel(self, event):
+        self._flush_scroll()
         self.canvas.yview_scroll(-int(event.delta / 120), 'units')
         return 'break'
 
@@ -233,6 +254,31 @@ class SCList(tk.Frame):
             if frame.winfo_y() <= actual < frame.winfo_y()+frame.winfo_height(): return iid
         return ''
 
-    def yview(self, *args): return self.canvas.yview(*args)
+    def _scroll_view(self, axis, args):
+        view = getattr(self.canvas, axis)
+        if not args:
+            return view()
+        if args[0] != 'moveto':
+            self._flush_scroll()
+            return view(*args)
+        self._scroll_targets[axis] = args
+        if self._scroll_job is None:
+            self._scroll_job = self.after(16, self._flush_scroll)
+
+    def _flush_scroll(self):
+        if self._scroll_job is not None:
+            self.after_cancel(self._scroll_job)
+            self._scroll_job = None
+        for axis, args in self._scroll_targets.items():
+            getattr(self.canvas, axis)(*args)
+        self._scroll_targets.clear()
+
+    def destroy(self):
+        for job in (self._layout_job, self._scroll_job):
+            if job is not None:
+                self.after_cancel(job)
+        super().destroy()
+
+    def yview(self, *args): return self._scroll_view('yview', args)
     def yview_moveto(self, value): return self.canvas.yview_moveto(value)
-    def xview(self, *args): return self.canvas.xview(*args)
+    def xview(self, *args): return self._scroll_view('xview', args)

@@ -195,7 +195,10 @@ class App:
             self.overlay_error = '18964 port unavailable'
         self.asset_root = Path(__file__).parent / 'assets'
         self.brand = None
-        if (self.asset_root / 'icon.ico').is_file(): root.iconbitmap(str(self.asset_root / 'icon.ico'))
+        icon = self.asset_root / 'icon.ico'
+        if sys.platform == 'win32' and icon.is_file():
+            root.iconbitmap(default=str(icon))
+            root.iconbitmap(str(icon))
         if (self.asset_root / 'icon.png').is_file(): self.brand = tk.PhotoImage(master=root, file=str(self.asset_root / 'icon.png')).subsample(8, 8)
         import re
         geometry = self.layout.get('geometry', '1064x832')
@@ -1586,7 +1589,11 @@ def main():
     logging.getLogger('blivedm').setLevel(logging.CRITICAL)
     logging.getLogger('blivedm').addHandler(logging.NullHandler())
     if sys.platform == 'win32':
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('Kokata.SCMaru')
+        shell = ctypes.windll.shell32
+        shell.SetCurrentProcessExplicitAppUserModelID('Kokata.SCMaru')
+        if getattr(sys, 'frozen', False):
+            # In-place updates keep the EXE path, so notify Explorer of the replaced item.
+            shell.SHChangeNotify(0x2000, 0x0005, ctypes.c_wchar_p(sys.executable), None)
     root = tk.Tk()
     app = App(root, directory, args.demo)
     root.mainloop()
