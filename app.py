@@ -28,7 +28,7 @@ from tooltip import Tooltip
 from version import VERSION
 from data_location import data_directory
 from notifications import ReminderBadge, SoundPlayer
-from translation import TranslationWorker, fingerprint, allowed, guess_language
+from translation import TranslationWorker, fingerprint
 from scroll_page import ScrollPage
 from appearance import apply_widgets,resolve_family
 from user_search import matches_user
@@ -119,9 +119,6 @@ class App:
         self.translation_cache = {}
         self.translation_current = None
         self.translation_timer = None
-        self.list_worker = None
-        self.list_current = None
-        self.list_token = 0
         saved_reminders = self.ledger.get('reminders', {})
         self.reminder_vars = {}
         for key, default in [('water', 10), ('activity', 60)]:
@@ -221,7 +218,8 @@ class App:
             variable.trace_add('write', self.schedule_save)
         for variable in (self.sound_enabled,self.sc_sound,self.alarm_sound,self.sound_volume): variable.trace_add('write',self.schedule_save)
         for variable in (self.ui_family,self.ui_scale): variable.trace_add('write',self.change_appearance)
-        for variable in (self.translation_enabled,self.list_translation_enabled,self.zh_to_ja,self.ja_to_zh,self.translation_mode,self.translation_url,self.translation_model,self.translation_key):
+        self.list_translation_enabled.trace_add('write', self.change_list_translation)
+        for variable in (self.translation_enabled,self.zh_to_ja,self.ja_to_zh,self.translation_mode,self.translation_url,self.translation_model,self.translation_key):
             variable.trace_add('write',self.change_translation)
         self.hide_original.trace_add('write',self.change_hide_original)
         for pair in self.reminder_vars.values():
@@ -939,14 +937,14 @@ class App:
         widget.insert('1.0', value)
         widget.configure(state='disabled')
 
-    def select_sc(self, e=None):
+    def select_sc(self, e=None, *, allow_request=True):
         selected = self.sc_tree.selection()
         if selected:
             r = self.ledger.db.execute('SELECT * FROM events WHERE id=?', (selected[0],)).fetchone()
             if r:
                 text = self.t('removed') if r['deleted'] else r['text']
                 self.fill_text(self.detail, f"{r['name']} · {batteries(r['amount'])} {self.t('amount')}\n{text}")
-                self.translate_selected(r,text)
+                self.translate_selected(r,text,allow_request=allow_request)
 
     def translation_config(self):
         return dict(mode=self.translation_mode.get(),url=self.translation_url.get().strip(),model=self.translation_model.get().strip(),key=self.translation_key.get().strip(),zh_to_ja=self.zh_to_ja.get(),ja_to_zh=self.ja_to_zh.get())
@@ -981,10 +979,6 @@ class App:
         if self.translation_worker: self.translation_worker.stop()
         self.translation_worker=None
         self.translation_current=None
-        if self.list_worker: self.list_worker.stop()
-        self.list_worker=None
-        self.list_current=None
-        self.list_token+=1
         self.sc_signature=None
         self.render_dirty=True
         if self.translation_timer: self.root.after_cancel(self.translation_timer)
@@ -994,6 +988,10 @@ class App:
         self.translation_timer=self.root.after(500,resume)
         self.sync_hide_original()
         self.select_sc()
+        self.schedule_save()
+
+    def change_list_translation(self,*args):
+        self.render_dirty=True
         self.schedule_save()
 
     def sync_hide_original(self):
@@ -1032,7 +1030,7 @@ class App:
             self.detail.insert('end',result['text'],'translation')
         self.detail.configure(state='disabled')
 
-    def translate_selected(self,row,text):
+    def translate_selected(self,row,text,*,allow_request=True):
         if not self.translation_enabled.get() or row['deleted']: return
         if self.translation_timer: return
         config=self.translation_config()
@@ -1045,8 +1043,9 @@ class App:
             elif isinstance(translated,str) and translated.strip() and translated.strip()!=text.strip() and not result.get('skipped'):
                 self.append_translation(result,hide_original=self.hide_original.get())
             return
-        if key==self.list_current and self.list_worker:
-            self.append_translation(dict(error='translation_loading'))
+        if not allow_request:
+            if key==self.translation_current and self.translation_worker:
+                self.append_translation(dict(error='translation_loading'))
             return
         if key!=self.translation_current or self.translation_worker is None:
             if self.translation_worker: self.translation_worker.stop()
@@ -1061,23 +1060,9 @@ class App:
         key=(row['id'],row['text'],fingerprint(self.translation_config()))
         result=self.translation_cache.get(key,{})
         value=result.get('text','')
-        return value if value!=row['text'] else ''
-
-    def pump_list_translation(self,rows):
-        if not self.list_translation_enabled.get() or self.translation_timer or self.list_worker: return
-        config=self.translation_config();signature=fingerprint(config)
-        for row in rows:
-            if row['deleted']: continue
-            key=(row['id'],row['text'],signature)
-            if key in self.translation_cache or (key==self.translation_current and self.translation_worker): continue
-            if not allowed(guess_language(row['text']),config):
-                self.translation_cache[key]=dict(text=row['text'],engine='',target='',skipped=True)
-                continue
-            self.list_current=key
-            self.list_token+=1
-            self.list_worker=TranslationWorker(self.queue)
-            self.list_worker.start('list:'+str(self.list_token),row['text'],config)
-            return
+        if result.get('skipped') or result.get('error') or not isinstance(value,str):
+            return ''
+        return value if value.strip() and value.strip()!=row['text'].strip() else ''
 
     def select_rank(self, e=None):
         selected = self.rank_tree.selection()
@@ -1301,7 +1286,9 @@ class App:
                                     tags=(('removed',) if r['deleted'] else ()) + (('square',) if r['mark'] == 'square' else ()),translation=self.list_translation(r))
             self.sc_signature = signature
         valid = selected.intersection(r['id'] for r in rows)
-        if valid: self.sc_tree.selection_set(*valid)
+        if valid:
+            self.sc_tree.selection_set(*valid, notify=False)
+            self.select_sc(allow_request=False)
         else: self.fill_text(self.detail, '')
         if scroll: self.sc_tree.yview_moveto(scroll[0])
         rank_selected = self.rank_tree.selection()
@@ -1315,26 +1302,17 @@ class App:
         else: self.fill_text(self.rank_detail, '')
         if rank_scroll: self.rank_tree.yview_moveto(rank_scroll[0])
         self.update_overlay()
-        self.pump_list_translation(rows)
         self.apply_appearance()
         self.render_dirty = False
 
     def handle(self, kind, data):
         if self.closing and kind in ('translation','login_checked'): return
         if kind=='translation':
-            if isinstance(data['token'],str) and data['token'].startswith('list:'):
-                if data['token']!='list:'+str(self.list_token) or not self.list_translation_enabled.get(): return
-                if self.list_current: self.translation_cache[self.list_current]=data['result']
-                self.list_worker=None
-                self.list_current=None
-                self.sc_signature=None
-                self.render_dirty=True
-                self.select_sc()
-                return
             if data['token']!=self.translation_token or not self.translation_enabled.get(): return
             if self.translation_current:
                 self.translation_cache[self.translation_current]=data['result']
                 if len(self.translation_cache)>128: self.translation_cache.pop(next(iter(self.translation_cache)))
+                self.render_dirty=True
             self.select_sc()
             return
         if kind == 'login_checked':
@@ -1447,7 +1425,6 @@ class App:
         if self.collector.running and not messagebox.askyesno(self.t('title'), self.t('close_ask'), parent=self.root): return
         self.closing = True
         if self.translation_worker: self.translation_worker.stop()
-        if self.list_worker: self.list_worker.stop()
         if self.login_dialog: self.login_dialog.close()
         self.save_settings()
         self.collector.stop()

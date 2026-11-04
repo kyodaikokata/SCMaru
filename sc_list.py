@@ -164,11 +164,12 @@ class SCList(tk.Frame):
     def exists(self, item): return item in self._records
     def selection(self): return tuple(self._selected)
 
-    def selection_set(self, *items):
+    def selection_set(self, *items, notify=True):
         if len(items) == 1 and not isinstance(items[0], str): items = tuple(items[0])
         self._selected = [i for i in items if i in self._records and not self._records[i]['divider']]
         for iid, row in self._records.items(): row['frame'].configure(highlightthickness=1 if iid in self._selected else 0)
-        self.event_generate('<<TreeviewSelect>>')
+        if notify:
+            self.event_generate('<<TreeviewSelect>>')
 
     def focus(self, item=None): return item
 

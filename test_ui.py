@@ -362,18 +362,25 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(a.ledger.get('appearance')['scale'],1.25)
 
     def test_list_translation_is_separate_italic_and_directions_persist(self):
-        from translation import fingerprint
         a=self.app
         self.assertTrue(a.zh_to_ja.get())
         self.assertFalse(a.ja_to_zh.get())
         item='DEMO:room:sc:demo-1'
-        with patch('app.TranslationWorker'):
+        with patch('app.TranslationWorker') as worker:
             a.list_translation_enabled.set(True)
-            if a.translation_timer: self.root.after_cancel(a.translation_timer)
-            a.translation_timer=None
+            a.render()
+            worker.assert_not_called()
+            self.assertNotIn('translation_label',a.sc_tree._records[item])
             row=a.ledger.db.execute('SELECT * FROM events WHERE id=?',(item,)).fetchone()
-            key=(item,row['text'],fingerprint(a.translation_config()))
-            a.translation_cache[key]=dict(text='今日もお疲れさまです',engine='API',target='ja')
+            a.translation_enabled.set(True)
+            self.root.after_cancel(a.translation_timer)
+            a.translation_timer=None
+            a.sc_tree.selection_set(item)
+            a.select_sc()
+            worker.return_value.start.assert_called_once()
+            a.handle('translation',dict(token=a.translation_token,
+                result=dict(text='今日もお疲れさまです',engine='API',target='ja')))
+            self.assertTrue(a.render_dirty)
             a.render()
             translated=a.sc_tree._records[item]['translation_label']
             self.assertEqual(translated.cget('text'),'今日もお疲れさまです')
@@ -381,6 +388,10 @@ class WindowTests(unittest.TestCase):
             a.list_translation_enabled.set(False)
             a.render()
             self.assertNotIn('translation_label',a.sc_tree._records[item])
+            a.list_translation_enabled.set(True)
+            a.render()
+            self.assertIn('translation_label',a.sc_tree._records[item])
+            worker.return_value.start.assert_called_once()
         a.save_settings()
         self.assertTrue(a.ledger.get('translation')['zh_to_ja'])
         self.assertFalse(a.ledger.get('translation')['ja_to_zh'])
