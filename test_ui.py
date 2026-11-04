@@ -117,9 +117,9 @@ class WindowTests(unittest.TestCase):
         event = SimpleNamespace(x=10, y=10, item_id='DEMO:room:sc:demo-0', column_id='#4')
         with patch.object(self.root, 'clipboard_clear'), patch.object(self.root, 'clipboard_append') as copy:
             a.click_mark(event, 'circle')
-            copy.assert_called_once_with('BV1xx411c7mD')
+            copy.assert_called_once_with('BV1UT42167xb')
         self.assertEqual(a.ledger.db.execute('SELECT mark FROM events WHERE id=?', (event.item_id,)).fetchone()[0], '')
-        self.assertIn('BV1xx411c7mD', a.notice.get())
+        self.assertIn('BV1UT42167xb', a.notice.get())
         self.assertIn('已复制', a.notice.get())
 
     def test_settings_can_close_and_json_autosaves(self):
@@ -297,7 +297,7 @@ class WindowTests(unittest.TestCase):
             a.translation_timer=None
             row=a.ledger.db.execute('SELECT * FROM events WHERE id=?',(item,)).fetchone()
             key=(item,row['text'],fingerprint(a.translation_config()))
-            a.translation_cache[key]=dict(text='日本語の翻訳 BV1Q541167Qg',engine='API',target='ja')
+            a.translation_cache[key]=dict(text='日本語の翻訳 BV1GJ411x7h7',engine='API',target='ja')
             a.sc_tree.selection_set(item)
             a.select_sc()
         shown=a.detail.get('1.0','end')
@@ -306,7 +306,7 @@ class WindowTests(unittest.TestCase):
         self.assertTrue(a.detail.tag_ranges('translation'))
         with patch.object(self.root,'clipboard_clear'),patch.object(self.root,'clipboard_append') as copy:
             a.copy_sc_bv(item)
-            copy.assert_called_once_with('BV1xx411c7mD')
+            copy.assert_called_once_with('BV1UT42167xb')
 
     def test_hide_original_requires_a_usable_translation(self):
         from translation import fingerprint
@@ -434,7 +434,7 @@ class WindowTests(unittest.TestCase):
             files=list(a.ledger.export_directory.glob('*.txt'))
             self.assertTrue(files)
             saved=files[0].read_text(encoding='utf-8-sig')
-            self.assertIn('BV1xx411c7mD',saved)
+            self.assertIn('BV1UT42167xb',saved)
             self.assertIn('小夏',saved)
             self.assertTrue(a.ended)
 

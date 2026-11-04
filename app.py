@@ -7,7 +7,9 @@ import logging
 import os
 from pathlib import Path
 import queue
+import subprocess
 import sys
+from threading import Thread
 import time
 import tkinter as tk
 import tkinter.font as tkfont
@@ -30,6 +32,8 @@ from translation import TranslationWorker, fingerprint, allowed, guess_language
 from scroll_page import ScrollPage
 from appearance import apply_widgets,resolve_family
 from user_search import matches_user
+from txt_archive import import_file
+import updater
 
 
 def system_language():
@@ -166,6 +170,9 @@ class App:
         self.export_dirty = False
         self.render_dirty = True
         self.closing = False
+        self.update_busy = False
+        self.update_executable = None
+        self.txt_seen = {}
         self.demo = demo
         self.main_frame = None
         self.settings_window = None
@@ -587,6 +594,8 @@ class App:
         ttk.Scale(sounds,from_=0,to=100,variable=self.sound_volume).pack(fill='x',pady=8)
         ttk.Label(general, text=self.t('scope_note'), wraplength=740, style='Muted.TLabel').pack(anchor='w', pady=20)
         ttk.Label(general,text=self.t('txt_autosave_note')+'\n'+str(self.ledger.export_directory),wraplength=710,style='Muted.TLabel').pack(anchor='w',pady=6)
+        if getattr(sys, 'frozen', False) and not self.demo:
+            ttk.Button(general, text=self.t('update'), command=self.check_update).pack(anchor='w', pady=4)
         self.help(ttk.Button(general, text=self.t('start_page'), command=self.open_start_page), 'start_help').pack(anchor='w', pady=8)
         from overlay_controls import build_controls
         build_controls(self, visual)
@@ -847,7 +856,7 @@ class App:
             self.update_overlay()
 
     def connect(self):
-        if self.demo or self.collector.running: return
+        if self.demo or self.collector.running or self.update_busy: return
         if self.mode.get() == 'livehime':
             self.notice.set(self.t('livehime_note'))
             self.open_settings()
@@ -1118,6 +1127,68 @@ class App:
         except OSError as exc:
             messagebox.showerror(self.t('error'),str(exc),parent=self.root)
 
+    def check_update(self):
+        if self.update_busy:
+            return
+        if self.collector.running:
+            messagebox.showinfo(self.t('update'), self.t('update_disconnect'), parent=self.root)
+            return
+        self.run_update_task(lambda: updater.check(VERSION), self.offer_update)
+
+    def run_update_task(self, action, on_success):
+        self.update_busy = True
+        self.notice.set(self.t('update_working'))
+        result = queue.Queue()
+
+        def work():
+            try:
+                result.put((True, action()))
+            except Exception as error:
+                result.put((False, type(error).__name__))
+
+        def poll():
+            try:
+                success, value = result.get_nowait()
+            except queue.Empty:
+                self.root.after(200, poll)
+                return
+            self.update_busy = False
+            self.notice.set('')
+            if success:
+                on_success(value)
+            else:
+                messagebox.showerror(self.t('update'), self.t('update_failed', error=value), parent=self.root)
+
+        Thread(target=work, daemon=True).start()
+        self.root.after(200, poll)
+
+    def offer_update(self, release):
+        if release is None:
+            messagebox.showinfo(self.t('update'), self.t('update_latest'), parent=self.root)
+            return
+        if messagebox.askyesno(self.t('update'), self.t('update_ask', version=release[0]), parent=self.root):
+            parent = Path(sys.executable).resolve().parent.parent
+            self.run_update_task(lambda: updater.install(release, parent), self.finish_update)
+
+    def finish_update(self, executable):
+        self.update_executable = executable
+        self.close()
+
+    def scan_txt_archives(self):
+        folder = self.ledger.export_directory
+        changed = False
+        for path in sorted(folder.glob('*.txt')):
+            try:
+                stat = path.stat()
+                signature = (stat.st_mtime_ns, stat.st_size)
+                if self.txt_seen.get(path) == signature:
+                    continue
+                changed |= import_file(self.ledger, path)
+                self.txt_seen[path] = signature
+            except (OSError, ValueError, OverflowError):
+                continue
+        return changed
+
     def history(self):
         window = tk.Toplevel(self.root)
         window.title(self.t('history'))
@@ -1126,12 +1197,28 @@ class App:
         box = tk.Listbox(window, bg=self.palette['input'], fg=self.palette['fg'], font=('Segoe UI', 11), selectbackground=self.palette['accent'], selectforeground=self.palette['fg'])
         box.pack(fill='both', expand=True, padx=12, pady=12)
         entries = []
-        for row in self.ledger.db.execute('SELECT * FROM sessions ORDER BY started DESC'):
-            entries.append(('session', row['id'], row['id']))
-            box.insert('end', f"{datetime.fromtimestamp(row['started']):%Y-%m-%d %H:%M:%S}  Room {row['room']}  {row['source']}")
-            for a in self.ledger.db.execute('SELECT * FROM archives WHERE session=? AND restored=0 ORDER BY created DESC', (row['id'],)):
-                entries.append(('archive', a['id'], row['id']))
-                box.insert('end', f"    ↳ {datetime.fromtimestamp(a['created']):%H:%M:%S}  {a['reason']}")
+
+        def refresh():
+            if self.closing or not window.winfo_exists():
+                return
+            if self.scan_txt_archives() or not entries:
+                selected = entries[box.curselection()[0]] if box.curselection() else None
+                entries.clear()
+                box.delete(0, 'end')
+                for row in self.ledger.db.execute('SELECT * FROM sessions ORDER BY started DESC'):
+                    entries.append(('session', row['id'], row['id']))
+                    box.insert('end', f"{datetime.fromtimestamp(row['started']):%Y-%m-%d %H:%M:%S}  Room {row['room']}  {row['source']}")
+                    for a in self.ledger.db.execute('SELECT * FROM archives WHERE session=? AND restored=0 ORDER BY created DESC', (row['id'],)):
+                        entries.append(('archive', a['id'], row['id']))
+                        box.insert('end', f"    ↳ {datetime.fromtimestamp(a['created']):%H:%M:%S}  {a['reason']}")
+                if selected in entries:
+                    index = entries.index(selected)
+                    box.selection_set(index)
+                    box.see(index)
+            self.root.after(2000, refresh)
+
+        refresh()
+        ttk.Label(window, text=self.t('txt_history_refresh'), wraplength=780, style='Muted.TLabel').pack(padx=12)
         ttk.Label(window, text=self.t('history_note'), wraplength=780).pack(padx=12, pady=6)
 
         def act():
@@ -1345,7 +1432,7 @@ class App:
         self.active_room, self.active_source = 'DEMO', 'room'
         self.ledger.attach('DEMO', 'room')
         now = int(time.time())
-        for index, (name, text, price) in enumerate([('Mika', '一緒に見たい動画 BV1xx411c7mD', 30), ('小夏', '今天也辛苦啦！', 50), ('はる', '次の動画も楽しみです BV1Q541167Qg', 100)]):
+        for index, (name, text, price) in enumerate([('Mika', '一緒に見たい動画 BV1UT42167xb', 30), ('小夏', '今天也辛苦啦！', 50), ('はる', '次の動画も楽しみです BV1GJ411x7h7', 100)]):
             event = normalize('room', 'sc', dict(id=f'demo-{index}', uid=index + 1, uname=name, message=text, price=price, start_time=now + index), 'DEMO')
             self.ledger.ingest(event, video=True)
         self.ledger.mark('DEMO:room:sc:demo-1', 'circle')  # A deliberately confirmed demo row.
@@ -1354,6 +1441,9 @@ class App:
         self.notice.set('DEMO · 模拟数据 / サンプルデータ')
 
     def close(self):
+        if self.update_busy:
+            messagebox.showinfo(self.t('update'), self.t('update_working'), parent=self.root)
+            return
         if self.collector.running and not messagebox.askyesno(self.t('title'), self.t('close_ask'), parent=self.root): return
         self.closing = True
         if self.translation_worker: self.translation_worker.stop()
@@ -1399,8 +1489,16 @@ def main():
     if sys.platform == 'win32':
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID('Kokata.SCMaru')
     root = tk.Tk()
-    App(root, directory, args.demo)
+    app = App(root, directory, args.demo)
     root.mainloop()
+    if app.update_executable:
+        try:
+            ctypes.windll.kernel32.SetDllDirectoryW(None)
+            env = dict(os.environ, PYINSTALLER_RESET_ENVIRONMENT='1')
+            subprocess.Popen([str(app.update_executable), '--data-dir', str(directory.resolve())],
+                             cwd=app.update_executable.parent, env=env)
+        except OSError:
+            messagebox.showerror(app.t('update'), app.t('update_ready', path=app.update_executable))
 
 
 if __name__ == '__main__':
