@@ -1,0 +1,275 @@
+{
+  "revision": "2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc",
+  "fonts": [
+    {
+      "family": "M PLUS Rounded 1c",
+      "label": "M PLUS Rounded 1c · 字幕酱圆体",
+      "file": "MPLUSRounded1c-Thin.ttf",
+      "weight": 100,
+      "sha256": "180c0959fff5af21637c3887c0ec47df8164877218ef7e866a7a227f2c1e1a9f",
+      "license": "licenses/mplusrounded1c/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mplusrounded1c/MPLUSRounded1c-Thin.ttf"
+    },
+    {
+      "family": "M PLUS Rounded 1c",
+      "label": "M PLUS Rounded 1c · 字幕酱圆体",
+      "file": "MPLUSRounded1c-Light.ttf",
+      "weight": 300,
+      "sha256": "ade5c673a5d097b59c7bc5b1a6c1e37d3dd63c3ac98468a647d8ab2392b98b49",
+      "license": "licenses/mplusrounded1c/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mplusrounded1c/MPLUSRounded1c-Light.ttf"
+    },
+    {
+      "family": "M PLUS Rounded 1c",
+      "label": "M PLUS Rounded 1c · 字幕酱圆体",
+      "file": "MPLUSRounded1c-Regular.ttf",
+      "weight": 400,
+      "sha256": "b75708b53e45b06d17d470aeeca5b766e3d1b3999f03f13ec4eb863ca846c14c",
+      "license": "licenses/mplusrounded1c/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mplusrounded1c/MPLUSRounded1c-Regular.ttf"
+    },
+    {
+      "family": "M PLUS Rounded 1c",
+      "label": "M PLUS Rounded 1c · 字幕酱圆体",
+      "file": "MPLUSRounded1c-Medium.ttf",
+      "weight": 500,
+      "sha256": "adfde1b6bae58719c4e0144612a94232e72fc5ca655c4722165fe88d06521a70",
+      "license": "licenses/mplusrounded1c/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mplusrounded1c/MPLUSRounded1c-Medium.ttf"
+    },
+    {
+      "family": "M PLUS Rounded 1c",
+      "label": "M PLUS Rounded 1c · 字幕酱圆体",
+      "file": "MPLUSRounded1c-Bold.ttf",
+      "weight": 700,
+      "sha256": "c358630584e8e2d8fbd6121d0f4693255ffef6d1e6d4f3441fd6e5a963a11f9e",
+      "license": "licenses/mplusrounded1c/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mplusrounded1c/MPLUSRounded1c-Bold.ttf"
+    },
+    {
+      "family": "M PLUS Rounded 1c",
+      "label": "M PLUS Rounded 1c · 字幕酱圆体",
+      "file": "MPLUSRounded1c-ExtraBold.ttf",
+      "weight": 800,
+      "sha256": "8e7c15901dca87f1451b356dda594f7d092ba252a5dcc47da74523a242493c36",
+      "license": "licenses/mplusrounded1c/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mplusrounded1c/MPLUSRounded1c-ExtraBold.ttf"
+    },
+    {
+      "family": "M PLUS Rounded 1c",
+      "label": "M PLUS Rounded 1c · 字幕酱圆体",
+      "file": "MPLUSRounded1c-Black.ttf",
+      "weight": 900,
+      "sha256": "d5981a59ccc5f00da1bd3ae46750fa95cd165b0e6b3a5fc7a1945f94c59449e3",
+      "license": "licenses/mplusrounded1c/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mplusrounded1c/MPLUSRounded1c-Black.ttf"
+    },
+    {
+      "family": "M PLUS 1p",
+      "label": "M PLUS 1p",
+      "file": "MPLUS1p-Thin.ttf",
+      "weight": 100,
+      "sha256": "aa093fe44beb740d2730e0437bdd0bfeb57b526d30e8b2410e29ec6503434dd6",
+      "license": "licenses/mplus1p/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mplus1p/MPLUS1p-Thin.ttf"
+    },
+    {
+      "family": "M PLUS 1p",
+      "label": "M PLUS 1p",
+      "file": "MPLUS1p-Light.ttf",
+      "weight": 300,
+      "sha256": "e39fa39f8556c3fdf47e01f68915d8d17936107f33fbead6b1b40fcf605c118c",
+      "license": "licenses/mplus1p/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mplus1p/MPLUS1p-Light.ttf"
+    },
+    {
+      "family": "M PLUS 1p",
+      "label": "M PLUS 1p",
+      "file": "MPLUS1p-Regular.ttf",
+      "weight": 400,
+      "sha256": "2f294ad496432b1608f070d310e3aa2adcf1de4af429f4901df97ec4bd361ed1",
+      "license": "licenses/mplus1p/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mplus1p/MPLUS1p-Regular.ttf"
+    },
+    {
+      "family": "M PLUS 1p",
+      "label": "M PLUS 1p",
+      "file": "MPLUS1p-Medium.ttf",
+      "weight": 500,
+      "sha256": "28b2f52a40ae988064810b71d67e127df75a16e08d7df4e192d1006e4075394f",
+      "license": "licenses/mplus1p/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mplus1p/MPLUS1p-Medium.ttf"
+    },
+    {
+      "family": "M PLUS 1p",
+      "label": "M PLUS 1p",
+      "file": "MPLUS1p-Bold.ttf",
+      "weight": 700,
+      "sha256": "76eb077b0a31ca33ca40238e47da5a17e2786741607cec09678d7d2e5ab1afc1",
+      "license": "licenses/mplus1p/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mplus1p/MPLUS1p-Bold.ttf"
+    },
+    {
+      "family": "M PLUS 1p",
+      "label": "M PLUS 1p",
+      "file": "MPLUS1p-ExtraBold.ttf",
+      "weight": 800,
+      "sha256": "d17f745712668b0dcd95e42b3634a90a76195228d4abf88a0be8e98ddbc441b2",
+      "license": "licenses/mplus1p/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mplus1p/MPLUS1p-ExtraBold.ttf"
+    },
+    {
+      "family": "M PLUS 1p",
+      "label": "M PLUS 1p",
+      "file": "MPLUS1p-Black.ttf",
+      "weight": 900,
+      "sha256": "815821a62ce085e453af318ca004768e336329d5a7d6f7bed272e97e7862d43e",
+      "license": "licenses/mplus1p/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/mplus1p/MPLUS1p-Black.ttf"
+    },
+    {
+      "family": "Zen Kaku Gothic New",
+      "label": "Zen Kaku Gothic New",
+      "file": "ZenKakuGothicNew-Light.ttf",
+      "weight": 300,
+      "sha256": "ad4e9733f96397ed0c99c295d9b3b56e39a0e0bc02b0ac56ce3ade7793a1eef1",
+      "license": "licenses/zenkakugothicnew/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/zenkakugothicnew/ZenKakuGothicNew-Light.ttf"
+    },
+    {
+      "family": "Zen Kaku Gothic New",
+      "label": "Zen Kaku Gothic New",
+      "file": "ZenKakuGothicNew-Regular.ttf",
+      "weight": 400,
+      "sha256": "b840cd07a67d89cacca44249ae49aa99ee7640eb5ce623be8d8983d6aabac801",
+      "license": "licenses/zenkakugothicnew/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/zenkakugothicnew/ZenKakuGothicNew-Regular.ttf"
+    },
+    {
+      "family": "Zen Kaku Gothic New",
+      "label": "Zen Kaku Gothic New",
+      "file": "ZenKakuGothicNew-Medium.ttf",
+      "weight": 500,
+      "sha256": "651a3f7280b7f36262601ee76d8388a8dc4372dcc67aff025a608939a562b525",
+      "license": "licenses/zenkakugothicnew/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/zenkakugothicnew/ZenKakuGothicNew-Medium.ttf"
+    },
+    {
+      "family": "Zen Kaku Gothic New",
+      "label": "Zen Kaku Gothic New",
+      "file": "ZenKakuGothicNew-Bold.ttf",
+      "weight": 700,
+      "sha256": "0081cedabc4921982fcd061f845a005664ac7fb642af2dd34b4007bc63ccd235",
+      "license": "licenses/zenkakugothicnew/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/zenkakugothicnew/ZenKakuGothicNew-Bold.ttf"
+    },
+    {
+      "family": "Zen Kaku Gothic New",
+      "label": "Zen Kaku Gothic New",
+      "file": "ZenKakuGothicNew-Black.ttf",
+      "weight": 900,
+      "sha256": "795819a979184981842994d8f4eb9e14ce443d687bd5e731d6ca67ded8f92261",
+      "license": "licenses/zenkakugothicnew/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/zenkakugothicnew/ZenKakuGothicNew-Black.ttf"
+    },
+    {
+      "family": "Zen Maru Gothic",
+      "label": "Zen Maru Gothic",
+      "file": "ZenMaruGothic-Light.ttf",
+      "weight": 300,
+      "sha256": "c4e6fa10ff517df37cb0c13038fe2813f3c47afe6577fa4a5573200e4508b2c1",
+      "license": "licenses/zenmarugothic/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/zenmarugothic/ZenMaruGothic-Light.ttf"
+    },
+    {
+      "family": "Zen Maru Gothic",
+      "label": "Zen Maru Gothic",
+      "file": "ZenMaruGothic-Regular.ttf",
+      "weight": 400,
+      "sha256": "a0c0b53543e0993ae2225e629c833f3d51495ad31720694ff112ce4ce11111ef",
+      "license": "licenses/zenmarugothic/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/zenmarugothic/ZenMaruGothic-Regular.ttf"
+    },
+    {
+      "family": "Zen Maru Gothic",
+      "label": "Zen Maru Gothic",
+      "file": "ZenMaruGothic-Medium.ttf",
+      "weight": 500,
+      "sha256": "3cfdb98a13571ede17fcc769f5093a97c38b80a7b9b2ab754a26b4d822092b3b",
+      "license": "licenses/zenmarugothic/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/zenmarugothic/ZenMaruGothic-Medium.ttf"
+    },
+    {
+      "family": "Zen Maru Gothic",
+      "label": "Zen Maru Gothic",
+      "file": "ZenMaruGothic-Bold.ttf",
+      "weight": 700,
+      "sha256": "fe24426b9c8b5523a0146a8235c8674eccf0493af354a53ec895c3596d9eb745",
+      "license": "licenses/zenmarugothic/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/zenmarugothic/ZenMaruGothic-Bold.ttf"
+    },
+    {
+      "family": "Zen Maru Gothic",
+      "label": "Zen Maru Gothic",
+      "file": "ZenMaruGothic-Black.ttf",
+      "weight": 900,
+      "sha256": "6bd74fe76cd39ee0ec18775c3661d845343fb3f6f8fa09a3076638417baf741f",
+      "license": "licenses/zenmarugothic/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/zenmarugothic/ZenMaruGothic-Black.ttf"
+    },
+    {
+      "family": "Noto Sans JP",
+      "label": "Noto Sans JP",
+      "file": "NotoSansJP[wght].ttf",
+      "weight": "100 900",
+      "sha256": "c2f3b4d463500a2ddcd3849cded1fceeb9fd6d1c32e6cbecd568453ba50fc68f",
+      "license": "licenses/notosansjp/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/notosansjp/NotoSansJP[wght].ttf"
+    },
+    {
+      "family": "Yusei Magic",
+      "label": "Yusei Magic",
+      "file": "YuseiMagic-Regular.ttf",
+      "weight": 400,
+      "sha256": "82098615f39ed9da6a8ccc674b9006e49c70dd5b775a7a1697f6bedd22ce25a2",
+      "license": "licenses/yuseimagic/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/yuseimagic/YuseiMagic-Regular.ttf"
+    },
+    {
+      "family": "Kaisei Decol",
+      "label": "Kaisei Decol",
+      "file": "KaiseiDecol-Regular.ttf",
+      "weight": 400,
+      "sha256": "fb9202b97944fa00b5f145ad4701def5c306bcd0d26407917baef9e01b042056",
+      "license": "licenses/kaiseidecol/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/kaiseidecol/KaiseiDecol-Regular.ttf"
+    },
+    {
+      "family": "Kaisei Decol",
+      "label": "Kaisei Decol",
+      "file": "KaiseiDecol-Medium.ttf",
+      "weight": 500,
+      "sha256": "6db5273d6807f4f575222a70ebf3bb548173dcdda2f22d9bf272d6d0e7161aa1",
+      "license": "licenses/kaiseidecol/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/kaiseidecol/KaiseiDecol-Medium.ttf"
+    },
+    {
+      "family": "Kaisei Decol",
+      "label": "Kaisei Decol",
+      "file": "KaiseiDecol-Bold.ttf",
+      "weight": 700,
+      "sha256": "0e3a6da5145fdbba32cfb1c806812d95457506e1698f5d61e8f834fb847f0d6f",
+      "license": "licenses/kaiseidecol/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/kaiseidecol/KaiseiDecol-Bold.ttf"
+    },
+    {
+      "family": "Nico Moji",
+      "label": "Nico Moji",
+      "file": "NicoMoji-Regular.ttf",
+      "weight": 400,
+      "sha256": "c74f2f8cc83252adc86ab28a4070d33d1cadaee32ff4c314b47338ab53ae13f1",
+      "license": "licenses/nicomoji/OFL.txt",
+      "source": "https://raw.githubusercontent.com/google/fonts/2fe1e8c6b137fb13041a7cfca6fdcd8a910ea4dc/ofl/nicomoji/NicoMoji-Regular.ttf"
+    }
+  ]
+}

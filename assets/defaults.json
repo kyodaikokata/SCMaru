@@ -1,0 +1,81 @@
+{
+  "language": "ja",
+  "video": false,
+  "overlay_font": "M PLUS Rounded 1c",
+  "layout": {
+    "geometry": "1064x865",
+    "maximized": false,
+    "sc_columns": {
+      "#0": 120,
+      "time": 130,
+      "user": 100,
+      "amount": 75
+    },
+    "sc_row_height": 62,
+    "rank_columns": {
+      "user": 167,
+      "amount": 60
+    },
+    "sc_detail_height": 5,
+    "rank_detail_height": 6,
+    "start_geometry": "860x760",
+    "split": 0.75,
+    "settings_geometry": "860x842",
+    "sc_detail_pixels": 165,
+    "list_font_size": 11
+  },
+  "template": "剩余SC： {pending}",
+  "appearance": {
+    "font": "M PLUS Rounded 1c",
+    "scale": 1.0
+  },
+  "theme": "pink",
+  "auto_reset": true,
+  "overlay_size": 55.4270462633452,
+  "overlay_effects": {
+    "weight": 700.3514938488577,
+    "shadow_enabled": true,
+    "shadow_offset": 4.644808743169399,
+    "shadow_blur": 10.382513661202186,
+    "shadow_opacity": 0.7468123861566485,
+    "shadow_color": "#000000",
+    "glow_enabled": true,
+    "glow_blur": 19.5264116575592,
+    "glow_opacity": 0.7049180327868853,
+    "glow_color": "#ff8000",
+    "stroke_enabled": true,
+    "stroke_width": 5.005464480874317,
+    "stroke_color": "#ffb537",
+    "italic_enabled": false,
+    "bold_enabled": true
+  },
+  "reminders": {
+    "water": {
+      "enabled": true,
+      "minutes": 10.0
+    },
+    "activity": {
+      "enabled": true,
+      "minutes": 60.0
+    }
+  },
+  "settings_tab": 4,
+  "sound": {
+    "enabled": true,
+    "sc": true,
+    "alarm": true,
+    "volume": 24.578651685393258
+  },
+  "rank_scope": "session",
+  "overlay_color": "#ffffff",
+  "filter": "all",
+  "translation": {
+    "enabled": true,
+    "list_enabled": true,
+    "zh_to_ja": true,
+    "ja_to_zh": false,
+    "mode": "api_first",
+    "url": "https://api.deepseek.com",
+    "model": "deepseek-flash"
+  }
+}

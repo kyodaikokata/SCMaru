@@ -1,0 +1,4 @@
+blivedm @ git+https://github.com/xfgryujk/blivedm.git@3bf17fe862b8c2fc6bc04c81c3f0c5db95de93d6
+Pillow==13.0.0
+qrcode==8.2
+pypinyin==0.55.0
