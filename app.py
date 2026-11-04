@@ -155,7 +155,7 @@ class App:
         self.rank_scope = tk.StringVar(value=self.ledger.get('rank_scope', 'session'))
         self.rank_sort = 'amount'
         self.sc_sort = 'time'
-        self.sc_sort_reverse = True
+        self.sc_sort_reverse = False
         if self.filter.get() not in ('all', 'pending', 'circle', 'triangle', 'square'): self.filter.set('all')
         if self.rank_scope.get() not in ('day', 'session'): self.rank_scope.set('session')
         self.status = 'disconnected'
@@ -955,13 +955,16 @@ class App:
         self.rank_scope.set(value)
         self.render_dirty = True
 
-    def set_mark(self, mark):
+    def set_mark(self, mark, *, refresh=False):
         for event_id in self.sc_tree.selection():
             row = self.ledger.db.execute('SELECT mark FROM events WHERE id=? AND session=?', (event_id, self.ledger.session)).fetchone()
             if row:
                 self.ledger.mark(event_id, '' if row['mark'] == mark else mark)
         self.export_dirty = True
-        self.render_dirty = True
+        if refresh:
+            self.update_overlay(pending=self.render_sc(allow_request=True))
+        else:
+            self.render_dirty = True
 
     def click_mark(self, event, mark):
         if not hasattr(event, 'item_id') and self.sc_tree.identify_region(event.x, event.y) not in ('tree', 'cell'):
@@ -970,13 +973,14 @@ class App:
         if item == '__processed_separator__':
             return 'break'
         if item:
-            self.sc_tree.selection_set(item)
-            self.sc_tree.focus(item)
-            self.select_sc()
+            self.sc_tree.selection_set(item, notify=False)
             column = event.column_id if hasattr(event, 'column_id') else self.sc_tree.identify_column(event.x)
-            if column == '#0': self.set_mark(mark)
-            elif mark == 'circle': self.copy_sc_bv(item)
-            self.render()
+            if column == '#0':
+                self.set_mark(mark, refresh=True)
+            else:
+                self.select_sc()
+                if mark == 'circle':
+                    self.copy_sc_bv(item)
             return 'break'
 
     def copy_sc_bv(self, item):
@@ -1337,7 +1341,7 @@ class App:
                             **{key: variable.get() for key, variable in self.overlay_effects.items()})
 
     def change_sc_sort(self, column):
-        self.sc_sort_reverse = not self.sc_sort_reverse if column == self.sc_sort else column != 'user'
+        self.sc_sort_reverse = not self.sc_sort_reverse if column == self.sc_sort else column == 'amount'
         self.sc_sort = column
         self.render()
 
@@ -1359,21 +1363,40 @@ class App:
         status_text = self.t(self.status)
         if self.status == 'connected': status_text += ' · ' + (self.active_anchor or self.t('anchor_unavailable'))
         self.status_label.configure(text=status_text + ' · ' + mode_text + self.status_extra)
-        rows = self.ledger.sc_rows()
-        pending = sum(r['mark'] != 'circle' and not r['deleted'] for r in rows)
-        self.count_label.configure(text=self.t('count', n=pending))
+        pending = self.render_sc()
         daily = self.rank_scope.get() == 'day'
         rankings = self.ledger.rankings(self.active_room, self.active_source, daily=daily)
         if self.rank_sort == 'time':
             rankings.sort(key=lambda row: (row['latest_gift'] is None, -(row['latest_gift'] or 0)))
         self.rank_sort_label.configure(text=self.t('rank_sort_' + self.rank_sort))
-        direction = 'desc' if self.sc_sort_reverse else 'asc'
-        self.sc_sort_label.configure(text=self.t('sc_sort_' + self.sc_sort + '_' + direction))
         total = sum(r['total'] for r in rankings)
         current = self.ledger.current()
         date = datetime.now().strftime('%Y-%m-%d') if daily or not current else datetime.fromtimestamp(current['started']).strftime('%Y-%m-%d %H:%M')
         gross_key = 'gross' if daily else ('session_gross' if current and current['start_known'] else 'capture_gross')
         self.total_label.configure(text=self.t(gross_key, date=date, amount=batteries(total)))
+        rank_signature = (self.active_room, self.active_source, self.ledger.session, daily, date,
+                          tuple(tuple(r) for r in rankings))
+        if self.rank_signature != rank_signature:
+            rank_selected = self.rank_tree.selection()
+            rank_scroll = self.rank_tree.yview()
+            self.rank_tree.delete(*self.rank_tree.get_children())
+            for index, r in enumerate(rankings, 1):
+                self.rank_tree.insert('', 'end', iid=r['user'], values=(f"{index}. {r['name']}", batteries(r['total'])))
+            if rank_selected and self.rank_tree.exists(rank_selected[0]):
+                self.rank_tree.selection_set(rank_selected)
+                self.select_rank()
+            else: self.fill_text(self.rank_detail, '')
+            if rank_scroll: self.rank_tree.yview_moveto(rank_scroll[0])
+            self.rank_signature = rank_signature
+        self.update_overlay(pending=pending, total=None if daily else total)
+        self.render_dirty = False
+
+    def render_sc(self, *, allow_request=False):
+        rows = self.ledger.sc_rows()
+        pending = sum(r['mark'] != 'circle' and not r['deleted'] for r in rows)
+        self.count_label.configure(text=self.t('count', n=pending))
+        direction = 'desc' if self.sc_sort_reverse else 'asc'
+        self.sc_sort_label.configure(text=self.t('sc_sort_' + self.sc_sort + '_' + direction))
         selected = set(self.sc_tree.selection())
         scroll = self.sc_tree.yview()
         filt = self.filter.get()
@@ -1403,25 +1426,10 @@ class App:
         valid = selected.intersection(r['id'] for r in rows)
         if valid:
             self.sc_tree.selection_set(*valid, notify=False)
-            self.select_sc(allow_request=False)
+            self.select_sc(allow_request=allow_request)
         else: self.fill_text(self.detail, '')
         if scroll: self.sc_tree.yview_moveto(scroll[0])
-        rank_signature = (self.active_room, self.active_source, self.ledger.session, daily, date,
-                          tuple(tuple(r) for r in rankings))
-        if self.rank_signature != rank_signature:
-            rank_selected = self.rank_tree.selection()
-            rank_scroll = self.rank_tree.yview()
-            self.rank_tree.delete(*self.rank_tree.get_children())
-            for index, r in enumerate(rankings, 1):
-                self.rank_tree.insert('', 'end', iid=r['user'], values=(f"{index}. {r['name']}", batteries(r['total'])))
-            if rank_selected and self.rank_tree.exists(rank_selected[0]):
-                self.rank_tree.selection_set(rank_selected)
-                self.select_rank()
-            else: self.fill_text(self.rank_detail, '')
-            if rank_scroll: self.rank_tree.yview_moveto(rank_scroll[0])
-            self.rank_signature = rank_signature
-        self.update_overlay(pending=pending, total=None if daily else total)
-        self.render_dirty = False
+        return pending
 
     def handle(self, kind, data):
         if self.closing and kind in ('translation','login_checked'): return

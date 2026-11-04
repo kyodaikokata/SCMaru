@@ -121,7 +121,24 @@ class SCList(tk.Frame):
             if iid != '__processed_separator__':
                 normal_count += 1
             key = (text, image, values, tags, translation, stripe, self.row_height, self.font_size)
-            if iid in self._records and self._records[iid].get('key') == key:
+            row = self._records.get(iid)
+            old = row.get('key') if row else None
+            if old == key:
+                continue
+            if old and not row['divider'] and (old[2], old[4], old[6:]) == (values, translation, key[6:]):
+                row['labels'][0].configure(text=text, image=image)
+                row['text'] = text
+                if (old[3], old[5]) != (tags, stripe):
+                    bg = self._row_background(False, stripe, tags)
+                    fg = self.palette['muted'] if 'removed' in tags else self.palette['fg']
+                    row['frame'].configure(bg=bg)
+                    row['labels'][-1].master.configure(bg=bg)
+                    for label in row['labels']:
+                        label.configure(bg=bg, fg=fg)
+                    if 'translation_label' in row:
+                        row['translation_label'].configure(bg=bg)
+                    row['bg'] = bg
+                row['key'] = key
                 continue
             self.delete(iid)
             self.insert('', 'end', iid, text, image, values, tags, translation, stripe=stripe)
@@ -134,15 +151,20 @@ class SCList(tk.Frame):
             self._records = OrderedDict((iid, self._records[iid]) for iid in order)
         return created
 
+    def _row_background(self, divider, stripe, tags):
+        p = self.palette
+        bg = p['surface'] if divider else (p['panel'] if stripe == 0 else blend(p['panel'], p['surface']))
+        if 'square' in tags:
+            tint = '#162b43' if p['bg'] == '#1c1b20' else '#7892b5'
+            bg = '#' + ''.join(f'{round(int(bg[i:i+2],16)*.82+int(tint[i:i+2],16)*.18):02x}' for i in (1,3,5))
+        return bg
+
     def insert(self, parent, index, iid, text='', image='', values=(), tags=(),translation='', *, stripe=None):
         p = self.palette
         divider = iid == '__processed_separator__'
         if stripe is None:
             stripe = (len(self._records) - ('__processed_separator__' in self._records)) % 2
-        bg = p['surface'] if divider else (p['panel'] if stripe == 0 else blend(p['panel'], p['surface']))
-        if 'square' in tags:
-            tint = '#162b43' if p['bg'] == '#1c1b20' else '#7892b5'
-            bg = '#' + ''.join(f'{round(int(bg[i:i+2],16)*.82+int(tint[i:i+2],16)*.18):02x}' for i in (1,3,5))
+        bg = self._row_background(divider, stripe, tags)
         frame = tk.Frame(self.inner, bg=bg, highlightbackground=p['green'], highlightthickness=0)
         frame.pack(fill='x')
         row = dict(frame=frame, values=values, text=text, bg=bg, divider=divider, labels=[])
